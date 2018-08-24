@@ -1,5 +1,7 @@
 package com.local.flink.trainning.streaming;
 
+import java.time.Instant;
+
 import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.api.java.utils.ParameterTool;
@@ -28,6 +30,7 @@ import com.local.flink.trainning.sources.TaxiFareSource;
 public class HourlyTipsExercise {
 	public static void main(String[] args) throws Exception {
 		ParameterTool params = ParameterTool.fromArgs(args);
+		///tmp/flink_exercise/nycTaxiFares.gz
 		final String fareDataFilePath = params.get("fares", "E:\\work_log\\2018-08\\nycTaxiFares.gz");
 		final String saveFile = params.get("save","/tmp/flink_exercise/hourlytips");
 		
@@ -39,16 +42,16 @@ public class HourlyTipsExercise {
 		
 		DataStream<TaxiFare> fares = environment.addSource(new TaxiFareSource(fareDataFilePath, maxEventDelaySecs, servingSpeedFactor));
 		
-		DataStream<Tuple3<Long, Long, Float>> hourlyTips = fares
+		DataStream<Tuple3<String, Long, Float>> hourlyTips = fares
 					                //use index or string will lead to error,
 					                //.keyBy("tip")
 					                .keyBy((TaxiFare taxiFare) -> taxiFare.driverId)
-					                .timeWindow(Time.minutes(1))
+					                .timeWindow(Time.hours(1))
 					                .aggregate(new AddTips(), new WrapWithWindowInfo());
 
 		//cascade windows,must have a duration that is multiple of the first window size
-		DataStream<Tuple3<Long, Long, Float>> hourlyMax = hourlyTips
-						            .timeWindowAll(Time.minutes(1))
+		DataStream<Tuple3<String, Long, Float>> hourlyMax = hourlyTips
+						            .timeWindowAll(Time.hours(1))
 						            .maxBy(2);
 		
 		hourlyMax.writeAsText(saveFile);
@@ -85,7 +88,7 @@ public class HourlyTipsExercise {
 		
 	}
 	
-	public static class WrapWithWindowInfo extends ProcessWindowFunction<Float, Tuple3<Long, Long, Float>, Long, TimeWindow> {
+	public static class WrapWithWindowInfo extends ProcessWindowFunction<Float, Tuple3<String, Long, Float>, Long, TimeWindow> {
 
 		/**
 		 * 
@@ -93,11 +96,11 @@ public class HourlyTipsExercise {
 		private static final long serialVersionUID = 1L;
 
 		@Override
-		public void process(Long arg0,
-				ProcessWindowFunction<Float, Tuple3<Long, Long, Float>, Long, TimeWindow>.Context arg1,
-				Iterable<Float> arg2, Collector<Tuple3<Long, Long, Float>> arg3) throws Exception {
-			// TODO Auto-generated method stub
-			
+		public void process(Long key,
+				ProcessWindowFunction<Float, Tuple3<String, Long, Float>, Long, TimeWindow>.Context ctx,
+				Iterable<Float> accs, Collector<Tuple3<String, Long, Float>> out) throws Exception {
+			Float sum = accs.iterator().next();
+			out.collect(new Tuple3<String, Long, Float>(Instant.ofEpochMilli(ctx.window().getEnd()).toString(), key, sum));
 		}
 		
 	}
